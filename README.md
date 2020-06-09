@@ -241,7 +241,7 @@ sudo service raspi_tracker status
 * To upload the coordinates on cloud  is need an internet connection, you can use a 3g connection or other type.
 See https://github.com/amerinoj/3gconnect
 
-* Copy the gps-tracker.html in your PC and open it with Google Chrome o Firefox to see the your tracker.
+* Copy the gps-tracker.html in your PC and open it with Google Chrome o Firefox to see your tracker.
 You can select your date from and to to paint the path. 
 
 If the Thingspeak servers has data to the day appear in green color
