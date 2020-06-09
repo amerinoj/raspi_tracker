@@ -146,6 +146,7 @@ The minumum_time define in seconds is the minimun time used when the calculated 
 minimum_time = 2
 reference_meters = 30
 ```
+```
 Reference table calculated for 25 meters, for 50km/h the position will be update every 9,6 seconds
 Current km/h	Current m/s		REFERENCE_METERS	REFRESS_TIME
 	10			2,7777				25				1,929012346
@@ -164,7 +165,7 @@ Current km/h	Current m/s		REFERENCE_METERS	REFRESS_TIME
 	140			38,88888889			25				27,00617284
 	150			41,66666667			25				28,93518519
 
-
+```
 
 
 [share]
@@ -228,16 +229,20 @@ sudo ./opt/raspi_tracker/client/client_tracker.pwc
 ---------------------------------------------------------------------
 # Usage
 
-Raspi_tracker.py is install as service unther raspi_tracker.service and comming run after the system is up. 
+* Raspi_tracker.py is install as service unther raspi_tracker.service and comming run after the system is up. 
 After configured the conf files reboot the system to run the service automatically or you can start the service manually.
 ```
 sudo service raspi_tracker start
 ```
-To check if the services is running 
+* To check if the services is running 
 ```
 sudo service raspi_tracker status
 ```
-To upload the coordinates on cloud  is need an internet connection, you can use a 3g connection or other type.
+* To upload the coordinates on cloud  is need an internet connection, you can use a 3g connection or other type.
 See https://github.com/amerinoj/3gconnect
 
+* Copy the gps-tracker.html in your PC and open it with Google Chrome o Firefox to see the your tracker.
+You can select your date from and to to paint the path. 
 
+If the Thingspeak servers has data to the day appear in green color
+![alt text](https://github.com/amerinoj/raspi_tracker/blob/master/img/Example.png?raw=true) 
