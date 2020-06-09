@@ -16,9 +16,10 @@ Client software
 <!-- toc -->
 
 - [Installation](#Installation)
-- [Basic configuration](#Basic configuration)
-   * [Configure raspi_tracker settings](#Configure raspi_tracker settings)
-- [Advanced configuration](#Advanced configuration)
+- [Basic configuration](#Basic-configuration)
+   * [Configure raspi_tracker settings](#Configure-raspi_tracker-settings)
+   * [Thingspeak channels and api key](#Config-Thingspeak-channels-and-api-key)   
+- [Advanced configuration](#Advanced-configuration)
 - [Usage](#Usage)
 
 <!-- tocstop -->
