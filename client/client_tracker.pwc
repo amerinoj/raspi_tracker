@@ -1,0 +1,321 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+import socket, cPickle, hashlib 
+from time import sleep
+import threading
+import logging, sys, os, configparser
+import Tkinter
+import tkFont
+
+################### Config Read ############################
+SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
+config = configparser.SafeConfigParser()
+config.read(SCRIPT_PATH + '/client_tracker.conf')
+################# connection data ###########################
+HOST = config.get('connection', 'ip') #Ip address to bind a connection
+PORT = config.getint('connection', 'port')  #Port to listen
+IFACE = config.get('connection', 'dev')  # Interface name
+############### Output level information ###################
+LEVEL_NAME=config.get('debug', 'debug_level')
+DEBUG_FILE=config.get('debug', 'debug_file') # only use when LEVEL_NAME='debug'
+LEVELS = {'debug': logging.DEBUG,
+          'info': logging.INFO,
+          'warning': logging.WARNING,
+          'error': logging.ERROR,
+          'critical': logging.CRITICAL}
+sys_logger = logging.getLogger('Client_tracker')
+
+gps_save  =  None
+UPDATE_RATE = 500
+			 
+#Share data between daemon and GUI
+class SHAREdata(threading.Thread):
+   def __init__(self,threadID,HOST,PORT,IFACE):
+      threading.Thread.__init__(self)
+      self.threadID = threadID
+      global gps_save #bring it in scope
+      sys_logger.debug("SHAREdata listen IP:"+str(HOST)+" PORT:"+str(PORT)+" IFACE:"+str(IFACE))
+      self.server_address = (HOST , PORT)
+      self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      self.sock.setsockopt(socket.SOL_SOCKET, 25, IFACE +'\0')
+      self.sock.settimeout(3)
+      self.running = False #Start running this thread
+      self.isOpen = False
+   def run(self):
+      sys_logger.info("SHAREdata thread running" )
+      global gps_save #bring it in scope
+      while self.running:
+        try:
+
+		   self.isOpen = False
+		   while  self.isOpen == False and self.running:
+		      self.sock.connect((self.server_address))
+		      self.isOpen = True
+		      sys_logger.debug("SHAREdata connection open  ")
+		     
+
+		   while  self.isOpen == True and self.running:
+		      payload_att=cPickle.loads( self.sock.recv(1024))		
+		      sys_logger.debug("SHAREdata payload attibutes received : "+str(payload_att))
+		      self.sock.sendall(cPickle.dumps(payload_att[0]))
+		      recv= self.sock.recv(payload_att[0])
+		      payload=cPickle.loads(recv)
+		      hash=hashlib.md5(recv).hexdigest()
+		      sys_logger.debug("SHAREdata owner calc hash: "+str(hash))
+		      self.sock.sendall(cPickle.dumps(hash))
+		      if hash != payload_att[1]:
+		         sys_logger.debug("SHAREdata hash no match ")
+		         self.sock.close()
+		         self.isOpen == False
+		         break
+		      else:
+		         gps_save=payload
+					
+        except  (socket.timeout, socket.error):
+		   if self.isOpen == True :
+		      self.sock.close()
+		      self.isOpen == False		  
+		   sys_logger.debug("Exception SHAREdata timeout  " + str(socket.error))
+		   sleep(2)
+		   pass
+        except Exception,e:
+		   sys_logger.error("Exception SHAREdata " + str(e))
+		   if self.isOpen == True :
+		      self.sock.close()
+		      self.isOpen == False	
+		   sleep(2)
+		   pass
+		   
+      self.sock.close()
+      sys_logger.info("End SHAREdata closed socket")
+	  
+
+ 
+class Application(Tkinter.Frame):
+    """ GUI """
+    def __init__(self, master,HOST, PORT, IFACE):
+        """ Initialize the Frame"""
+        global gps_save
+        self.master=master
+        Tkinter.Frame.__init__(self, self.master)
+        self.grid(row=4, column=0, columnspan=2)
+        self.pack(fill=Tkinter.BOTH, expand=1)
+        self.HOST=HOST
+        self.PORT=PORT
+        self.IFACE=IFACE
+        sys_logger.debug("GUI Create Thread...")
+        self.Share_Thead = SHAREdata(2,self.HOST,self.PORT,self.IFACE) 
+
+		#font size
+        self.FontLabel=tkFont.Font(family="Arial", size=10) # define the font size
+        self.FontData=tkFont.Font(family="Arial", size=27) # define the font size
+        self.FontSpeed=tkFont.Font(family="Arial", size=38) # define the font size
+        
+        #vars
+        self.speed_var = Tkinter.StringVar()
+        self.speed_var.set('000.00 Km/h')
+        self.position_var = Tkinter.StringVar()
+        self.position_var.set('000.00 M')  
+        self.gps_p_var = Tkinter.StringVar()
+        self.gps_p_var.set('000.00 M')
+        self.gps_a_var = Tkinter.StringVar()
+        self.gps_a_var.set('00000 M')		
+        self.gps_q_var = Tkinter.StringVar()
+        self.gps_q_var.set('0')
+        self.gps_t_var = Tkinter.StringVar()
+        self.gps_t_var.set('00:00.00')
+        self.lat_var = Tkinter.StringVar()
+        self.lat_var.set(unicode("00°.00'.00,0000''", 'iso8859-1'))
+        self.lon_var = Tkinter.StringVar()
+        self.lon_var.set(unicode("00°.00'.00,0000''", 'iso8859-1'))
+        self.thread_var= Tkinter.StringVar()		
+        self.thread_var.set("START")
+        self.status_var= Tkinter.StringVar()		
+        self.status_var.set("DISCONNECT")		
+        self.create_widgets()
+        
+ 
+    def create_widgets(self):
+        """Create button. """
+        #labels
+        self.lb_speed = Tkinter.Label(self,  text="SPEED:", fg="#FFA500" , font=self.FontLabel)
+        self.lb_speed.grid(row=0,rowspan=2 , column=0,  sticky="ewsn")
+        self.l_speed = Tkinter.Label(self,  textvariable=self.speed_var, fg="#CD5C5C" , font=self.FontSpeed)
+        self.l_speed.grid(row=0,rowspan=2,column=1, columnspan=3, sticky="w")
+        
+        self.lb_position = Tkinter.Label(self,  text="DIF \nPOSITION:", fg="#FFA500", font=self.FontLabel)
+        self.lb_position.grid(row=2, column=0,sticky="ewsn")
+        self.l_position = Tkinter.Label(self,  textvariable=self.position_var, fg="#333399", font=self.FontData)
+        self.l_position.grid(row=2 , column=1, columnspan=2, sticky="w")
+        
+        self.lb_gps_p = Tkinter.Label(self,  text="GPS \nPRECISION:", fg="#FFA500", font=self.FontLabel)
+        self.lb_gps_p.grid(row=3, column=0, sticky="ewsn")		
+        self.l_gps_p = Tkinter.Label(self,  textvariable=self.gps_p_var, fg="#333399", font=self.FontData)
+        self.l_gps_p.grid(row=3, column=1, sticky="w")	
+
+        self.lb_gps_q = Tkinter.Label(self,  text="GPS\nQUALITY:", fg="#FFA500", font=self.FontLabel)
+        self.lb_gps_q.grid(row=3, column=2, sticky="esn")		
+        self.l_gps_q = Tkinter.Label(self,  textvariable=self.gps_q_var, fg="#333399", font=self.FontData)
+        self.l_gps_q.grid(row=3, column=3,  sticky="w")	
+        
+        self.lb_gps_t = Tkinter.Label(self,  text="TIME:", fg="#FFA500", font=self.FontLabel)
+        self.lb_gps_t.grid(row=4, column=0, sticky="ewsn")		
+        self.l_gps_t = Tkinter.Label(self,  textvariable=self.gps_t_var, fg="#333399", font=self.FontData)
+        self.l_gps_t.grid(row=4, column=1,  sticky="w")	
+
+        self.lb_gps_a = Tkinter.Label(self,  text="ALT:", fg="#FFA500", font=self.FontLabel)
+        self.lb_gps_a.grid(row=4, column=2, sticky="esn")		
+        self.l_gps_a = Tkinter.Label(self,  textvariable=self.gps_a_var, fg="#333399", font=self.FontData)
+        self.l_gps_a.grid(row=4, column=3, columnspan=1, sticky="w")	
+        
+        self.lb_lat = Tkinter.Label(self,  text="LAT:", fg="#FFA500" , font=self.FontLabel)
+        self.lb_lat.grid(row=5, column=0, sticky="ewsn")
+        self.l_lat = Tkinter.Label(self,  textvariable=self.lat_var, fg="#333399" , font=self.FontData)
+        self.l_lat.grid(row=5, column=1, columnspan=2, sticky="w")
+        
+        self.lb_lon = Tkinter.Label(self,  text="LON:", fg="#FFA500", font=self.FontLabel)
+        self.lb_lon.grid(row=6, column=0, sticky="ewsn")
+        self.l_lon = Tkinter.Label(self,  textvariable=self.lon_var, fg="#333399", font=self.FontData)
+        self.l_lon.grid(row=6, column=1 ,columnspan=2, sticky="w")
+        
+        #buttons
+        self.bt_zom_max = Tkinter.Button(self, text="+" ,fg="black", font=self.FontLabel, command=self.zom_up)
+        self.bt_zom_max.grid(row=7, column=0,sticky="e")
+        self.bt_zom_min = Tkinter.Button(self, text="-" ,fg="black", font=self.FontLabel, command=self.zom_down)
+        self.bt_zom_min.grid(row=7, column=1, sticky="w")   
+        
+        self.lb_status = Tkinter.Label(self,  textvariable=self.status_var, fg="#CD5C5C", font=self.FontLabel)
+        self.lb_status.grid(row=7, column=1,columnspan=2, sticky="e") 
+                
+        self.start_button = Tkinter.Button(self, textvariable=self.thread_var ,fg="black", font=self.FontLabel, command=self.managed_thread)
+        self.start_button.grid(row=7, column=3,padx=10, pady=10, sticky="w")
+        self.exit_button = Tkinter.Button(self, text="EXIT" ,fg="black", font=self.FontLabel, command=self.gui_close)
+        self.exit_button.grid(row=7, column=3,padx=10, pady=10, sticky="e")
+ 
+
+ 
+    def updater(self):
+        self.update_labels()
+        self.after(UPDATE_RATE, self.updater)
+		
+		
+    def update_labels(self):
+        #update vars
+        self.speed_var.set(str("%06.2f" % (gps_save['Speed']*3.6))+" Km/h" )
+        self.position_var.set(str("%06.2f" % gps_save['Diff_p'])+ " M")
+        self.gps_p_var.set(str("%06.2f" % gps_save['Acc']) + " M")
+        if gps_save['Quality']==0:
+            self.gps_q_var.set(str("No Signal"))
+        else:	
+            self.gps_q_var.set(str(gps_save['Quality']))
+        self.gps_t_var.set(str(gps_save['Time']))
+        self.gps_a_var.set(str("%05.0f" % gps_save['Alt'])+" "+str(gps_save['Alt_units']))
+        lat = "%02d°%02d'%07.4f\"" % (gps_save['Lat'], gps_save['Lat_m'], gps_save['Lat_s'])
+        lon ="%02d°%02d'%07.4f\"" % (gps_save['Lon'], gps_save['Lon_m'], gps_save['Lon_s'])
+        self.lat_var.set(unicode(lat, 'iso8859-1'))
+        self.lon_var.set(unicode(lon, 'iso8859-1'))
+		
+        if self.Share_Thead.running == True:
+            if self.Share_Thead.isOpen == True:				
+                self.status_var.set("SERVER CONNECT")
+            else:
+                self.status_var.set("SERVER DISCONNECT")
+        else:
+            self.status_var.set("DISCONNECT")
+		
+    def zom_down(self):
+        self.FontLabel.configure(size=self.FontLabel.cget("size")-2)
+        self.FontData.configure(size=self.FontData.cget("size")-2)	
+        self.FontSpeed.configure(size=self.FontSpeed.cget("size")-2)	
+	
+	
+    def zom_up(self):
+        self.FontLabel.configure(size=self.FontLabel.cget("size")+2)
+        self.FontData.configure(size=self.FontData.cget("size")+2)
+        self.FontSpeed.configure(size=self.FontSpeed.cget("size")+2)
+
+    def managed_thread(self):
+        try :
+		
+            if self.Share_Thead.running == True:
+                sys_logger.debug("GUI Killing Thread...")
+                self.Share_Thead.running = False
+                self.Share_Thead.join() # wait for the thread to finish what it's doing
+                self.thread_var.set("START")
+                self.status_var.set("DISCONNECT")				
+            else:
+                sys_logger.debug("GUI Start Thread...")	
+                self.Share_Thead = SHAREdata(2,self.HOST,self.PORT,self.IFACE) 				
+                self.Share_Thead.running = True
+                self.Share_Thead.start()
+                sleep(1)
+                self.updater()
+                self.thread_var.set("STOP")
+
+				
+        except Exception,e :
+            sys_logger.error("GUI Excepcion " + str(e))
+            self.status_var.set("SERVER NO AVAILABLE")
+            pass
+			
+    def gui_close (self):	
+        try :
+            sys_logger.debug("GUI close...")	
+            if self.Share_Thead.running == True:
+                sys_logger.info("Killing Thread...")
+                self.Share_Thead.running = False
+                self.Share_Thead.join() # wait for the thread to finish what it's doing
+            self.master.destroy()
+        except Exception,e :				
+            pass
+			
+def close ():
+#  sys_logger.info("Killing Thread...")
+#  Share_Thead.running = False
+#  Share_Thead.join() # wait for the thread to finish what it's doing
+  sys_logger.info("Done.Exiting.")  
+	
+def main (argv): # main function
+  try:
+    if os.environ.get('DISPLAY','') == '':
+      print('no display found. Using :0.0')
+      os.environ.__setitem__('DISPLAY', ':0.0')
+	
+    root = Tkinter.Tk()
+    root.title("Client Raspi Tracker")  
+    root.resizable(True, True)
+	
+    app = Application(root, HOST, PORT, IFACE)
+    root.protocol("WM_DELETE_WINDOW", app.gui_close)
+    root.mainloop()
+    close ()
+
+
+  except Exception,e :    
+    sys_logger.error("Excepcion in main:"+ str(e))
+    close() 
+	
+  except (KeyboardInterrupt, SystemExit): #when you press ctrl+
+    sys_logger.debug("KeyboardInterrupt  Exit...")
+    close() 
+
+  
+if __name__=="__main__":
+  level = LEVELS.get(LEVEL_NAME, logging.NOTSET)
+  sys_logger.setLevel(level)
+  if (DEBUG_FILE != "") and (level <= logging.DEBUG):
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s %(message)s')
+    logging.basicConfig(format='%(asctime)s [%(levelname)s] %(name)s %(message)s',filename=DEBUG_FILE,level=level)
+  else:
+    formatter = logging.Formatter('[%(levelname)s] %(name)s %(message)s')
+
+  handler = logging.StreamHandler()
+  handler.setLevel(level)
+  handler.setFormatter(formatter)
+  sys_logger.addHandler(handler)
+
+#  Share_Thead = SHAREdata(2,HOST,PORT,IFACE)
+#  Share_Thead.start() # start info share connection
+   
+  main (sys.argv[1:])
+  

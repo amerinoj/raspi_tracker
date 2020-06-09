@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <title>Raspi_Tracker, Thingspeak, GPS and Google Map</title>
+    <meta name="Raspi_Tracker" content="initial-scale=1.0, user-scalable=yes">
+    <meta charset="utf-8">
+<script type="text/javascript" document.cookie = 'cross-site-cookie=bar; SameSite=Lax'; document.cookie = 'cross-site-cookie=bar; SameSite=Strict';></script>
+<link href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.9.1/themes/overcast/jquery-ui.css" rel="stylesheet" type="text/css"  />
+
+<style>
+	
+      /* Always set the map height explicitly to define the size of the div
+       * element that contains the map. */
+      #control {
+        position: relative;
+        width: 20%;
+        float: left;
+        height: 100%;
+        background-color: #FFA500;
+        z-index: 1010101010;
+		min-width: 130px;
+		display: inline-block
+      }
+      #map {
+        position: relative;
+        width: 78%;
+        float: right;
+        height: 100%;
+        background-color: #0080ff;
+        z-index: 1010101010
+      }
+      /* Optional: Makes the sample page fill the window. */
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+		}
+	
+td.GpsHaveData {border: none !important;padding: 1px 0 1px 1px !important;background: none !important;overflow:hidden;}
+td.GpsHaveData a {background: #99dd73  50% 50% repeat-x !important;  border: 1px #88a276 solid !important;}
+.target {background-color: #FF5733;}
+.gm-iw{white-space: pre-wrap;}
+.gm-style{white-space: pre-wrap;}
+.input-wrapper {width: calc(100% - 140px)}
+</style>
+
+  </head>
+  <body>
+<script type="text/javascript" src="https://unpkg.com/default-passive-events"></script>
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.9.1/jquery-ui.min.js"></script>
+<script  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAaOw-rSYAjlieNzqHly_PyYJxEONTOHZ4"></script>	   
+<script language="javascript" type="text/javascript"> // http://api.thingspeak.com/ queries
+const thing_url = "https://api.thingspeak.com/channels/0000000/";
+const thing_key = "api_key=XXXXXXXXXXXXXXXX";
+var last_record=[];
+var gps_data_days = [""];
+var data_range =[];
+var activeMonth = new Date().getMonth() + 1;
+var activeYear = new Date().getFullYear();
+$( function Update_calendar () {
+  var data_range =Get_first_last_days(new Date());	
+  Get_Data_Days(data_range[0], data_range[1]);
+  var from = $( "#fromDate" )
+      .datepicker({
+        dateFormat: "yy-mm-dd",
+        changeMonth: true,
+        onChangeMonthYear: function (year, month, inst) {
+            fecha=new Date(year,month-1,01);			
+            data_range =Get_first_last_days(fecha);
+            Get_Data_Days(data_range[0], data_range[1]);			
+        },
+        beforeShowDay: function(date){
+					
+					var datestring = jQuery.datepicker.formatDate('yy-mm-dd', date);	
+						if (gps_data_days.indexOf(datestring) != -1) {
+							return [true, "GpsHaveData", 'Gps Data available'];
+						} 
+						else {
+							return [true, '', ''];
+						} 
+					
+         },
+		onSelect: function(date) {
+            Get_Data_Time(date,"fromTime");
+			$(this).change();
+        }
+		 
+      })
+      .on( "change", function() {
+        to.datepicker( "option", "minDate", GetDate( this ) );
+        return [true, '', ''];
+      });
+
+	  
+    to = $( "#toDate" ).datepicker({
+      dateFormat: "yy-mm-dd",
+      changeMonth: true,
+      beforeShowDay: function(date){
+                    var datestring = jQuery.datepicker.formatDate('yy-mm-dd', date);
+					
+                    if (gps_data_days.indexOf(datestring) != -1) {
+						return [true, "GpsHaveData", 'Gps Data available'];
+                    } 
+                    else {
+                        return [true, '', ''];
+                    } 
+         },	
+	  
+	  onSelect: function(date) {
+            Get_Data_Time(date,"toTime");
+			$(this).change();
+      }
+
+    })
+    .on( "change", function() {
+      from.datepicker( "option", "maxDate", GetDate( this ) );
+    });
+
+  function GetDate( element ) {
+    var date;
+    var dateFormat = "yy-mm-dd";
+    try {
+      date = $.datepicker.parseDate( dateFormat, element.value );
+    } catch( error ) {
+      date = null;
+    }
+
+    return date;
+  }
+  
+  
+  
+});
+ 
+
+  function Get_Last_Record(callback)
+  {
+    var request = new XMLHttpRequest();
+    request.open('GET', thing_url+"feeds/last.json?"+thing_key);
+    request.responseType = 'json'; // now we're getting a string!
+    request.send();
+	request.onload = function() {
+		if (request.status == 200) {
+		    callback(request.response);
+		    // console.log("Get_last ()\n Latitude:"+last_record['field1']+"\n"+"Longitude:"+last_record['field2']+
+			//  "\n"+"Altitude:"+last_record['field3']+"\n"+"Time:"+last_record['field4']);
+		 
+		}
+		}
+  }
+  
+  function Get_Last_Status(callback)
+  {
+    var request = new XMLHttpRequest();
+    request.open('GET', thing_url+"status.json?results=1&"+thing_key);
+    request.responseType = 'json'; // now we're getting a string!
+    request.send();
+	request.onload = function() {
+		if (request.status == 200) {
+		    callback(request.response); 
+		}
+		}
+  }
+  
+  function Get_Data_Days(start,end)
+  {
+    var request = new XMLHttpRequest();
+    request.open('GET', thing_url+"fields/0.json?"+thing_key+"&start="+start+"&end="+end);
+    request.responseType = 'json'; // now we're getting a string!
+    request.send();
+    request.onload  = function(){
+		if (request.status == 200) {
+			 var  out= [];
+			 var myArr =request.response['feeds'];
+			 //console.log(myArr[0]['created_at'].substr(0, myArr[0]['created_at'].indexOf('T')) );
+			 var i;
+
+			 if (myArr.length > 1){
+				 for(i = myArr.length-1; i > 1 ; i--){
+					if (myArr[i]['created_at'].substr(0, myArr[i]['created_at'].indexOf('T')) != myArr[i-1]['created_at'].substr(0, myArr[i-1]['created_at'].indexOf('T'))) {
+						out.push(myArr[i]['created_at'].substr(0, myArr[i]['created_at'].indexOf('T')));
+						}
+				 }
+				 out.push(myArr[0]['created_at'].substr(0, myArr[0]['created_at'].indexOf('T')));
+			 }else{out.push("");}
+			 gps_data_days=out;
+			 $("#fromDate").datepicker("refresh");
+		}
+
+	
+    };
+
+		
+  }  
+
+  function Get_Data_Time(date,obj_id)
+  {
+	
+    var request = new XMLHttpRequest();
+    request.open('GET', thing_url+"fields/4.json?"+thing_key+"&start="+date+"&end="+Date_plus_one(date));
+    request.responseType = 'json'; // now we're getting a string!
+    request.send();
+    request.onload  = function(){
+		if (request.status == 200) {
+		 	 var select = document.getElementById(obj_id);//select dropdown
+			 for (i = select.options.length-1; i >= 0; i--) { //clear previus data
+				select.options[i] = null;
+			 }	
+			 
+			 var myArr =request.response['feeds'];
+			 var i;
+			 var el;
+			 //console.log(myArr);
+			 if (myArr.length > 1){
+				 for(i = 0 ; i < (myArr.length -1 ) ; i++){
+					var time=new Date(myArr[i]['created_at'].substr(0, myArr[i]['created_at'].indexOf('Z')));
+					var time_1=new Date(myArr[i+1]['created_at'].substr(0, myArr[i]['created_at'].indexOf('Z')));
+					if (time.getHours() != time_1.getHours()) {
+						el = document.createElement("option"); //load data
+						el.textContent =( time.getHours() < 10 ? '0' : '') + time.getHours() ;
+						el.value = ( time.getHours() < 10 ? '0' : '') + time.getHours();
+						select.appendChild(el);
+						}
+				 }
+				 el = document.createElement("option"); //load last entry
+				 el.textContent = ( time.getHours() < 10 ? '0' : '') + time.getHours();
+				 el.value = ( time.getHours() < 10 ? '0' : '') + time.getHours();
+				 select.appendChild(el);
+			 }
+
+		}
+
+	
+	};
+  }
+  function Get_Records(start,end,callback)
+  {
+    var request = new XMLHttpRequest();
+    request.open('GET', thing_url+"feeds.json?"+thing_key+"&start="+start+"&end="+end);
+    request.responseType = 'json'; // now we're getting a string!
+    request.send();
+    request.onload  = function(){
+		if (request.status == 200) {
+			 var out =request.response['feeds'];
+			 callback(out);
+		}
+    };	
+  }  
+
+  function Get_first_last_days (date)
+  {
+	var  out= [];
+	var firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+	var lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+	out.push(firstDay.getFullYear()+ '-' + (firstDay.getMonth()+ 1)  + '-' + firstDay.getDate());
+	out.push(lastDay.getFullYear()+ '-' + (lastDay.getMonth() + 1)  + '-' + lastDay.getDate());
+	return (out) ;
+  }
+  
+  function Date_plus_one(date) {	
+	Tmpdate = new Date(date);
+	Tmpdate.setDate(Tmpdate.getDate() + 1); // add one day to query
+	Out=Tmpdate.toISOString().substr(0,10); //get only date
+	//console.log("start:"+date+"  End:"+Out);
+	return (Out);
+  }
+  
+  
+  const show_target = result => {
+    document.getElementById('ltarget').innerHTML = result['channel']['name'];
+	//console.log(result);
+}
+
+
+
+</script>
+
+<script language="javascript" type="text/javascript"> //map update
+
+var marker;
+var map;
+var multipolyline= new Array () ;
+var multicircle= new Array () ;
+var multidirectionsRenderer = new Array () ;
+
+  function MapMake(z) {
+    
+    var mapOptions = {
+		zoom: z,
+    };
+    map = new google.maps.Map(document.getElementById('map'),mapOptions);
+	
+	}
+	
+  function MapCenterTo(LatLon) {
+    //map.setCenter(LatLon);
+	map.panTo(LatLon);
+	}
+	
+  function rgb(value) {
+	var r =255;
+	var g =127;
+	var b =0 ;
+	value=value+1;
+	if (value>255){ value=value%255;}
+
+	if(value % 2 == 0) {
+		r = Math.abs( r - (value * 15)  ) ;
+		g = Math.abs( r +(value * 30) );
+		b = Math.abs( r +(value * 45)  ) ;
+	}
+	else{
+		r = Math.abs( r - (value * 30)  ) ;
+		g = Math.abs( r +(value * 15) );
+		b = Math.abs( r +(value * 45)  ) ;
+	}
+
+	if (r>255){ r=r%255;}
+	if (g>255){ g=g%255;}
+	if (b>255){ b=b%255;}
+
+
+	var hexR = Number(r).toString(16);
+	var hexG = Number(g).toString(16);
+	var hexB = Number(b).toString(16);
+	if (hexR.length < 2) {
+		   hexR = "0" + hexR;
+	}
+	if (hexG.length < 2) {
+		   hexG = "0" + hexG;
+	}
+	if (hexB.length < 2) {
+		   hexB = "0" + hexB;
+	}
+	return('#'+hexR+hexG+hexB);
+  }
+
+	
+  function ShowPoint(point,zoom) {
+    LatLon={lat: parseFloat(point['field1']), lng: parseFloat(point['field2'])};
+	Tit= "Last Point\n" + point['field3'] +"\n"+ point['created_at'].substr(0, point['created_at'].indexOf('T')) 
+		+"\nGPS TIME:"+ point['field4'];
+	LatLonStr= "("+LatLon['lat'].toString()+","+LatLon['lng'].toString()+")\n"
+	Tit=LatLonStr+Tit
+	 
+	 map.setZoom(zoom);
+    if (typeof marker != 'undefined'  ) {
+		//console.log(marker);
+		marker.setVisible(true);
+		marker.setPosition(LatLon);
+		marker.title= Tit;
+		//infowindow.setContent('<p>Marker Location:' + marker.getPosition() + '</p>');
+    }
+	else{
+		// add marker
+		//console.log("fisrt maker");
+	    marker = new google.maps.Marker({
+		position: LatLon,
+		map: map,
+		title: Tit
+        });
+
+		marker.addListener('click', function(event) {
+			infowindow = new google.maps.InfoWindow({
+			//content: "<span>"+event.latLng+"</span>"
+			content: '<span>'+this.title+'</span>'
+			});
+			infowindow.open(map, this);
+		});
+		
+		infowindow_mouseover = new google.maps.InfoWindow();
+		marker.addListener('mouseover', function(event) {
+			infowindow_mouseover = new google.maps.InfoWindow({
+			content: "<span>"+event.latLng+"</span>"
+			//content: "<span>"+this.title+"</span>"	
+			});
+			infowindow_mouseover.open(map, this);
+		});	
+		marker.addListener('mouseout', function() {
+			infowindow_mouseover.close();
+		});
+		
+						
+	}
+	
+	
+	MapCenterTo(LatLon);
+		
+  }   
+  
+	
+	function chunkArray(myArray, chunk_size){
+		var results = [];
+		while (myArray.length) {
+			results.push(myArray.splice(0, chunk_size));
+		}
+    
+		return results;
+	} 
+	
+  function calculateRoute (src,dst,wpoints,type) {
+	return new Promise(resolve => {
+	
+		var directionsService = new google.maps.DirectionsService();
+		directionsService.route({
+			origin: src,  
+			destination: dst,
+			waypoints:wpoints,
+			optimizeWaypoints: false,		
+			travelMode: google.maps.TravelMode[type]
+			}, function(response, status) {
+			  if (status == 'OK') {
+				//console.log(response);
+				resolve (response);
+			  } else {
+				window.alert('Directions request failed due to ' + status);
+			  }
+			});
+	
+	});
+  }
+	
+  function CreateMaker (tit,coordinates,color,bounce) {	
+	var CMarker;
+	var b=null;
+	var sc=8.5;
+	var symbol='M -2,0 0,-2 2,0 0,2 z';
+	var ic = google.maps.SymbolPath.CIRCLE;
+	
+	if (bounce){
+		b= google.maps.Animation.BOUNCE;
+		sc=10;
+		//ic = symbol;
+	}
+	LatLonStr= "("+coordinates['lat'].toString()+","+coordinates['lng'].toString()+")\n"
+	tit=LatLonStr+tit
+	CMarker= new google.maps.Marker({
+	position: coordinates,
+	sName: coordinates,
+	title:tit,
+	animation: b,
+	icon: {
+		path: ic,
+		scale: sc,
+		fillColor:color,
+		strokeColor: color,
+		fillOpacity: 0.4,
+		strokeWeight: 0.4
+		},
+	});	
+
+
+	
+	
+	CMarker.addListener('click', function(event) {
+		infowindow = new google.maps.InfoWindow({
+		//content: "<span>"+event.latLng+"</span>"
+		content: "<span>"+this.title+"</span>"
+		});
+		infowindow.open(map, this);
+	});
+	
+	CMarker.addListener('mouseover', function(event) {
+		infowindow_mouseover = new google.maps.InfoWindow({
+		content: "<span>"+event.latLng+"</span>"
+		//content: "<span>"+this.title+"</span>"	
+		});
+		infowindow_mouseover.open(map, this);
+	});	
+	CMarker.addListener('mouseout', function() {
+		infowindow_mouseover.close();
+	});
+	return (CMarker);
+	
+	}
+	
+	
+	async function RenderMap(multiroute_coor,multiroute_alt_date, type) {
+
+		var wpoints= new Array ();
+		var color;
+		
+		//clear previus routes
+		if (typeof multidirectionsRenderer != 'undefined') { //clear directionsRenderer	
+			for(i = 0 ; i < multidirectionsRenderer.length   ; i++){	multidirectionsRenderer[i].setMap(null);}
+		}
+		if (typeof multipolyline != 'undefined') { //clear polines in map
+			for(i = 0 ; i < multipolyline.length   ; i++){	multipolyline[i].setMap(null);}
+			for(i = 0 ; i < multicircle.length   ; i++){	multicircle[i].setMap(null);}
+			multicircle = [];
+			multipolyline = [];
+			marker.setVisible(false);
+		
+		}
+		var tmp = new Array();
+
+		if (type!="POLYLINE"){
+			for( i = 0 ; i < multiroute_coor.length   ; i++){
+				color = rgb(i);
+				
+				var split_multiroute =chunkArray(multiroute_coor[i],27);
+				var split_info =chunkArray(multiroute_alt_date[i],27);
+				//split array maximum waypoints 25 
+				for (z = 0; z < split_multiroute.length ; z++){
+					var src;
+					var dst;
+					if (split_multiroute[z].length>=2){ // if the split is less than 2 use equal src and dst
+						src=new google.maps.LatLng(split_multiroute[z][0]);
+						dst=new google.maps.LatLng(split_multiroute[z][split_multiroute[z].length - 1]);
+						
+					}
+					else{
+						src=new google.maps.LatLng(split_multiroute[z][0]);
+						dst=new google.maps.LatLng(split_multiroute[z][0]);
+					}
+					
+					//iterate array and fill waypoints
+					wpoints=[];
+					for (p = 1; p <( split_multiroute[z].length -1 ) ; p++){
+						wpoints.push({location: new google.maps.LatLng(split_multiroute[z][p]),
+						stopover: true
+						});
+					
+					}
+					
+					//calc type Route 
+					var dir = await calculateRoute(src,dst,wpoints,type);
+					
+					
+					for(x = 0 ; x < dir.routes.length   ; x++){
+						for(y = 0 ; y < (dir.routes[x].legs.length )   ; y++){
+							
+							
+							if (y == 0 && z ==0){ //is first?
+								var tit = split_info[z][y]['alt']+'\n'+split_info[z][y]['date'];
+								CMarker=CreateMaker (tit,dir.routes[x].legs[y].start_location,color,true)
+								CMarker.setMap(map);
+								multicircle.push(CMarker);
+							}
+							else{
+
+								if (y == (dir.routes[x].legs.length -1) ){ //is last secction
+									var tit = split_info[z][y]['alt']+'\n'+split_info[z][y]['date'];
+									CMarker=CreateMaker (tit,dir.routes[x].legs[y].start_location,color,false)
+									CMarker.setMap(map);
+									multicircle.push(CMarker);
+									if (z == (split_multiroute.length -1) ){ //is the last of day
+										if (y != 0){var tit = split_info[z][y+1]['alt']+'\n'+split_info[z][y+1]['date'];}
+										else{var tit = split_info[z][y]['alt']+'\n'+split_info[z][y]['date'];}
+										
+										CMarker=CreateMaker (tit,dir.routes[x].legs[y].end_location,color,true);
+										CMarker.setMap(map);
+										multicircle.push(CMarker);
+									}
+									else{
+										if (y != 0){var tit = split_info[z][y+1]['alt']+'\n'+split_info[z][y+1]['date'];}
+										else{var tit = split_info[z][y]['alt']+'\n'+split_info[z][y]['date'];}
+										
+										CMarker=CreateMaker (tit,dir.routes[x].legs[y].end_location,color,false);
+										CMarker.setMap(map);
+										multicircle.push(CMarker);
+									
+									}
+								}
+								else{//intermedio
+									var tit = split_info[z][y]['alt']+'\n'+split_info[z][y]['date'];
+									CMarker=CreateMaker (tit,dir.routes[x].legs[y].start_location,color,false)
+									CMarker.setMap(map);
+									multicircle.push(CMarker);
+								}
+								
+							}
+
+						}
+						
+						
+					}
+					
+					
+					//create style direccionrenderer
+					var directionsRenderer = new google.maps.DirectionsRenderer({
+					suppressInfoWindows: true,
+					suppressMarkers: true,
+					polylineOptions :({
+						strokeColor: color,
+						fillColor:color,
+						icons: [{
+								icon: {path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW},
+								fillColor:color,
+								strokeColor: color,
+								offset: '100%'
+								}],
+						}),
+					map: map,
+					});
+					
+					//show direccion in map
+					directionsRenderer.setDirections(dir);
+					multidirectionsRenderer.push(directionsRenderer);
+				}
+			}
+		}
+		else
+		{	//show points in map as polylines
+			MapPoly(multiroute_coor,multiroute_alt_date,"");
+		}			
+	}
+
+  function MapPoly(multiroute_coor,multiroute_alt_date,Html_color) {//bidimensional array [multiroute[route]]
+  var Bounds= new google.maps.LatLngBounds() ;
+  var color;
+
+	for(i = 0 ; i < multiroute_coor.length   ; i++){
+	
+		if (Html_color==""){color = rgb(i);}
+			else{color = Html_color;}
+	
+		for(j = 0 ; j < (multiroute_coor[i].length )   ; j++){
+			Bounds.extend(new google.maps.LatLng(multiroute_coor[i][j]));
+		
+			if (j+1 <multiroute_coor[i].length){
+				var poly =new google.maps.Polyline( {
+					path: [multiroute_coor[i][j],multiroute_coor[i][j+1]],
+					geodesic: true,
+					map: map,
+					//draggable: true,
+					// editable: true,
+					icons: [{
+							icon: {path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW},
+							strokeColor: color,
+							offset: '100%'
+							}],
+							
+					strokeColor: color,
+					strokeOpacity: 1.0,
+					strokeWeight: 2
+					});	
+				  poly.setMap(map);  
+				  multipolyline.push(poly);
+			}
+			
+			if ( multiroute_alt_date[i][j] != "")
+			{
+				if (j==0 || j == (multiroute_coor[i].length-1)){
+				
+					var CMarker =CreateMaker (multiroute_alt_date[i][j]['alt']+'\n'+multiroute_alt_date[i][j]['date'],multiroute_coor[i][j],color,true)
+
+				}
+				else{
+					var CMarker =CreateMaker (multiroute_alt_date[i][j]['alt']+'\n'+multiroute_alt_date[i][j]['date'],multiroute_coor[i][j],color,false)	
+				
+				
+				}
+				
+				  CMarker.setMap(map);
+				  multicircle.push(CMarker);
+			}
+
+	
+	   }
+
+	}
+	
+	MapCenterTo(Bounds.getCenter());  
+	map.fitBounds(Bounds);
+	
+  }
+
+	function DateToFormattedString(d) {         
+                                 
+        var yyyy = d.getFullYear().toString();                                    
+        var mm = (d.getMonth()+1).toString(); // getMonth() is zero-based         
+        var dd  = d.getDate().toString();
+        var tt  = d.toTimeString().substr(0,8);		
+                             
+        return yyyy + '-' + (mm[1]?mm:"0"+mm[0]) + '-' + (dd[1]?dd:"0"+dd[0]) + " " + tt;
+   };
+   
+  function ShowMapTrace() {
+    var stime;
+	var etime;
+    if (document.getElementById("fromTime").value==""){stime="00";}else{stime=document.getElementById("fromTime").value;}
+    if (document.getElementById("toTime").value==""){etime="00";}else{etime=document.getElementById("toTime").value;}
+
+	StartDateString=document.getElementById("fromDate").value +"T"+ stime+":00:00";
+	EndDateString=document.getElementById("toDate").value +"T"+ etime+":59:59";
+	StartDate=new Date (StartDateString);
+	EndDate=new Date( EndDateString );
+	Time_check=!Boolean(document.getElementById("24h").checked);
+	EndDate_1=Date_plus_one(document.getElementById("toDate").value);
+	
+	Get_Records(document.getElementById("fromDate").value,EndDate_1,function(records) {
+
+		//console.log(records); 
+ 
+		var route = new Array ();
+		var route_alt_date = new Array ();
+		var multiroute = new Array ();
+		var multiroute_alt_date  = new Array ();
+		
+		if (records.length > 1){
+			for(i = 0 ; i < records.length   ; i++){
+
+				TmpDateHourString=records[i]['created_at'].substr(0, records[i]['created_at'].indexOf('Z'));
+				TmpDateHour=new Date(Date.parse(TmpDateHourString));
+				var TmpDate1=new Date();
+				if (Time_check){
+					if ((TmpDateHour>= StartDate)  && (TmpDateHour<=EndDate) ) {
+					    if ( i== (records.length-1) ){
+							console.log(i+" From:"+DateToFormattedString(StartDate)+" Select:" + DateToFormattedString(TmpDateHour) +" TO:"+DateToFormattedString(EndDate));
+							route.push({lat: parseFloat(records[i]['field1']), lng: parseFloat(records[i]['field2'])});
+							route_alt_date.push({alt:"Alt:"+records[i]['field3'],date:DateToFormattedString(TmpDateHour)+"\nGPS TIME:"+records[i]['field4']});
+							multiroute.push(route);
+							route=new Array ();
+							multiroute_alt_date.push(route_alt_date);
+							route_alt_date=new Array ();
+							
+						}
+						else{
+						    console.log(i+" From:"+DateToFormattedString(StartDate)+" Select:" + DateToFormattedString(TmpDateHour) +" TO:"+DateToFormattedString(EndDate));
+							TmpDate1=new Date(records[i+1]['created_at'].substr(0, records[i+1]['created_at'].indexOf('Z')));
+							if (TmpDateHour.toLocaleDateString() == TmpDate1.toLocaleDateString() ) {
+								
+								route.push({lat: parseFloat(records[i]['field1']), lng: parseFloat(records[i]['field2'])});
+								route_alt_date.push({alt: "Alt:"+records[i]['field3'],date:DateToFormattedString(TmpDateHour)+"\nGPS TIME:"+records[i]['field4']});
+							}
+							else{
+								route.push({lat: parseFloat(records[i]['field1']), lng: parseFloat(records[i]['field2'])});
+								route_alt_date.push({alt: "Alt:"+records[i]['field3'],date:DateToFormattedString(TmpDateHour)+"\nGPS TIME:"+records[i]['field4']});
+								multiroute.push(route);
+								route=new Array ();
+								multiroute_alt_date.push(route_alt_date);
+								route_alt_date=new Array ();
+							}
+						}
+					}
+					else{
+						if ( i== (records.length-1) ){
+							multiroute.push(route);
+							route=new Array ();
+							multiroute_alt_date.push(route_alt_date);
+							route_alt_date=new Array ();
+						}
+					
+					}
+					
+					
+					
+					
+				}
+				else{
+					if ( i== (records.length-1) ){
+					    console.log(i+" From:"+DateToFormattedString(StartDate)+" Select:" + DateToFormattedString(TmpDateHour) +" TO:"+DateToFormattedString(EndDate));
+						route.push({lat: parseFloat(records[i]['field1']), lng: parseFloat(records[i]['field2'])});
+						route_alt_date.push({alt: "Alt:"+records[i]['field3'],date:DateToFormattedString(TmpDateHour)+"\nGPS TIME:"+records[i]['field4']});
+						multiroute.push(route);
+						route=new Array ();
+						multiroute_alt_date.push(route_alt_date);
+						route_alt_date=new Array ();						
+					}
+					else{
+						console.log(i+" From:"+DateToFormattedString(StartDate)+" Select:" + DateToFormattedString(TmpDateHour) +" TO:"+DateToFormattedString(EndDate));
+						TmpDate1=new Date(records[i+1]['created_at'].substr(0, records[i+1]['created_at'].indexOf('Z')));
+						if (TmpDateHour.toLocaleDateString() == TmpDate1.toLocaleDateString() ) {
+							route.push({lat: parseFloat(records[i]['field1']), lng: parseFloat(records[i]['field2'])});
+							route_alt_date.push({alt: "Alt:"+records[i]['field3'],date:DateToFormattedString(TmpDateHour)+"\nGPS TIME:"+records[i]['field4']});
+						}
+						else{
+							route.push({lat: parseFloat(records[i]['field1']), lng: parseFloat(records[i]['field2'])});
+							route_alt_date.push({alt: "Alt:"+records[i]['field3'],date:DateToFormattedString(TmpDateHour)+"\nGPS TIME:"+records[i]['field4']});
+							multiroute.push(route);
+							route=new Array ();
+							multiroute_alt_date.push(route_alt_date);
+							route_alt_date=new Array ();
+						}
+					}						
+				
+				
+				}
+
+			}
+		}
+	
+
+		if ((multiroute.length === 0 ) && ( route.length > 0) ) {	
+			multiroute.push(route);
+		}
+
+		if ((multiroute_alt_date.length === 0) && (route_alt_date.length > 0) ) {	
+			multiroute_alt_date.push(route_alt_date);
+		}
+
+			
+		
+		//MapPoly(multiroute,multiroute_alt_date,"");
+		var type = document.getElementById("show_type").value;
+		RenderMap(multiroute,multiroute_alt_date,type);
+	
+	});
+
+	}
+	  
+  function  Refress(){
+   if( !isNaN(parseInt(document.getElementById("uptade_time").value)) && !isNaN(parseInt(document.getElementById("uptade_zoom").value)) ){
+   
+	  if(document.getElementById("refress_last_position").checked){
+		seconds=(document.getElementById("uptade_time").value * 1000);
+		processID=window.setInterval(function(){Get_Last_Record(show_last_point);}, seconds);
+	  }
+	  else{
+		window.clearInterval(processID); 
+	  }
+	}
+	  
+  }
+  
+  function   Disable_hours(){
+	if(document.getElementById("24h").checked){
+		document.getElementById("toTime").disabled=true;
+		document.getElementById("fromTime").disabled=true;		
+	}
+	else{
+		document.getElementById("toTime").disabled=false;
+		document.getElementById("fromTime").disabled=false;	
+	}
+  }
+  
+  
+const show_last_point = result => {
+	zoom = parseInt(document.getElementById("uptade_zoom").value);
+	ShowPoint(result,zoom);
+	//console.log(result);
+}
+  
+
+
+  
+</script>
+	
+
+
+
+    <div style="float:left; width:20%; margin-left:2px;" id="control"> 
+	<h1 align="center">Controls</h1>
+	<span align="center" class="label target" align="center" >Target: <b> <label for="Target:" id="ltarget"  >Target</label></b></span>
+	<br></br>
+	
+	<table align="center"  style="width:100% background-color: #ffffff; filter: alpha(opacity=40); opacity: 0.95;border:2px white solid;" >
+	<caption align="up" ><b>Show stored data</b></caption>	
+	<td align="center"> Format:</td><td align="center"  > yyyy-mm-dd </td>
+    <tr align="left">
+	<td align="left" > From: </td><td align="left" > <input type="text" id="fromDate"  size="5" ><br> </td>
+	</tr>
+	<tr align="left">
+	<td align="left"> Time From: </td><td align="left">
+	<select name="select1" id="fromTime" onmousedown="if(this.options.length>0){this.size=1;}" onchange='this.size=0;' onblur="this.size=0;">
+	</select> Hour
+	</td>
+	</tr>    
+	<tr align="left">
+    <td align="left"> To: </td><td align="left"> <input type="text" id="toDate" size="5"></td>
+	</tr>
+	<tr align="left">
+	<td align="left"> Time To: </td><td align="left">
+	<select name="select2" id="toTime" onmousedown="if(this.options.length>0){this.size=1;}" onchange='this.size=0;' onblur="this.size=0;">
+	</select> Hour
+	</td>
+	</tr> 
+	
+	<tr align="left">
+	<td align="left"> <label for="refress_last_position">24h</label><input type="checkbox" id="24h" name="24h" onclick="Disable_hours()" value=False> </td>
+	<td align="right"> </td>
+	</tr>
+	<tr align="left">
+	<td align="left"> <label>Show as:</label></td>
+	<td align="right">
+	<select name="show_type" id="show_type" onmousedown="if(this.options.length>0){this.size=1;}" onchange='this.size=0;' onblur="this.size=0;">
+			<option value="POLYLINE">Polyline</option>
+			<option value="WALKING">Walking</option>
+			<option value="BICYCLING">Bicycling</option>
+			<option value="DRIVING">Driving</option>
+		</select>
+	
+	<button onclick="ShowMapTrace()">Show in map</button ></td>
+	</tr>
+    </table>
+	<br>
+<table align="center" style="width:100% background-color: #ffffff; filter: alpha(opacity=40); opacity: 0.95;border:2px white solid;" >
+	<caption align="up" ><b>Auto refress last position</b></caption>	
+	 <td>
+	 <input type="text"pattern="[0-9]{2}" id="uptade_zoom" name="uptade_zoom"  min="2" max="99"  value="16" size="1"  maxlength="2"><label >/z</label>
+	 <input type="text"pattern="[0-9]{2}" id="uptade_time" name="uptade_time"  min="2" max="99"  value="5" size="1"  maxlength="2"><label >/s</label>
+	<input type="checkbox" id="refress_last_position" name="check_last" onclick="Refress()" value=False>
+	<label for="refress_last_position"> Auto refress</label></br>
+ </td>
+ </table>
+	</div>
+	<div id="info"></div>
+    <div style="float:right; width:78%; margin-right:2px;" id="map"> </div>
+
+<script>
+Get_Last_Status(show_target); //show target name
+google.maps.event.addDomListener(window, 'load', MapMake(parseInt(document.getElementById("uptade_zoom").value)));
+Get_Last_Record(show_last_point); //first load page show the last postion 
+</script>
+
+  </body>
+</html>

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Terminal=false
+Name=Raspi_Tracker_Client
+Icon=/opt/raspi_tracker/client/gps.png
+Exec=sudo /opt/raspi_tracker/client_tracker.pwc 

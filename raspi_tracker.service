@@ -1,0 +1,17 @@
+[Unit]
+Description=Raspi Tracker GPS
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python  /opt/raspi_tracker/raspi_tracker.py
+WorkingDirectory=/opt/raspi_tracker/
+Restart=always
+RestartSec=1s
+#StandardOutput=syslog
+#StandardError=syslog
+KillSignal=SIGINT
+
+[Install]
+WantedBy=network.target
+
