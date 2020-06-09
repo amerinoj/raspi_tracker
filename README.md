@@ -242,7 +242,10 @@ sudo service raspi_tracker status
 See https://github.com/amerinoj/3gconnect
 
 * Copy the gps-tracker.html in your PC and open it with Google Chrome o Firefox to see your tracker.
-You can select your date from and to to paint the path. 
+You can select your date from and to to paint the path. If the Thingspeak servers has data to the day appear in green color.
 
-If the Thingspeak servers has data to the day appear in green color
 ![alt text](https://github.com/amerinoj/raspi_tracker/blob/master/img/Example.png?raw=true) 
+
+* In your raspbian desktop should be apperar a icon to open the client.You can monitoring the GPS status and parameters from this app
+
+![alt text](https://github.com/amerinoj/raspi_tracker/blob/master/img/Client.png?raw=true) 
