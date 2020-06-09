@@ -66,16 +66,16 @@ const thing_key = "api_key=XXXXXXXXXXXXXXXX";
 
 
 
-* Edit raspi_tracker.conf
+* Edit **/opt/raspi_tracker/raspi_tracker.conf**
 
-[upload]  
+**[upload]**
 
 Configure 'url' with your thingspeak write api key. 
 ```
 url = https://api.thingspeak.com/update?api_key=XXXXXXXXXXXXXXXX
 ```
 
-[gps]
+**[gps]**
 
 * Configure your gps device  parameters.
 ```
@@ -110,9 +110,9 @@ You need assigned  'Maps JavaScript API' in your project . if in addition you as
 # Advanced configuration
 ## Configure raspi_tracker settings
 
-* Adjust config settings in  /opt/raspi_tracker/raspi_tracker.conf
+* Adjust config settings in  **/opt/raspi_tracker/raspi_tracker.conf**
 
-[gps]
+**[gps]**
 
 Configure your gps device  parameters.
 ```
@@ -122,7 +122,7 @@ timeout = 50
 gps_precision = 12
 ```
 
-[miscellanea]
+**[miscellanea]**
 
 If minimum_upload is enable the position will be update only if the gps target go out from the current assumption.
 The current position is a perimeter calculated from current position plus gps accuracy
@@ -131,7 +131,7 @@ gps accuracy = gps_precision ^ Hdop
 minimum_upload = True
 ```
 
-[adaptative]
+**[adaptative]**
 
 If adaptative_time is enable the refress_time under 'upload' is omite.
 Adaptative time enable a dynamic calculated time to upload the possition to cloud.
@@ -168,7 +168,7 @@ Current km/h	      Current m/s		  REFERENCE_METERS	                REFRESS_TIME
 ```
 
 
-[share]
+**[share]**
 
 The raspi tracker has a GUI client "client_tracker.pwc" to show the GPS parameters, these setting share the gps data between the two programs.
 The traffic can be share in local machine or between two machines , define your bind ip address, port and interface.
@@ -178,7 +178,7 @@ port = 6927
 dev = lo
 ```
 
-[debug]  
+**[debug]**
 
 Change the debug level from 'info' to 'debug' to enable debug output
 ```
@@ -199,7 +199,7 @@ sudo ./opt/raspi_tracker/raspi_tracker.py
 
 * Adjust config settings in  /opt/raspi_tracker/client/client_tracker.conf
 
-[connection] 
+**[connection]**
 
 Define the ip and port server than is share the data. 
 ```
@@ -212,7 +212,7 @@ dev = lo
 ```
 
 
-[debug]  
+**[debug]**
 
 Change the debug level from 'info' to 'debug' to enable debug output.
 
