@@ -5,7 +5,6 @@
 from math import sin, cos, sqrt, atan2, radians
 from time import sleep
 from os import path
-import pynmea2
 import threading
 import datetime
 import serial, string, io
